@@ -11,6 +11,7 @@
 #define NUM_THREADS 10
 
 struct mosquitto *mosq = NULL;
+int num_transmission = 0;
 
 void *publisher_thread(void *parameters)
 {
@@ -24,6 +25,16 @@ void *publisher_thread(void *parameters)
     printf("%s %s\n", topic, mqtt_message);
     if( mosquitto_publish(mosq, NULL, topic, strlen(mqtt_message), mqtt_message, 1, false) != MOSQ_ERR_SUCCESS )
         printf("ERROR\n");
+}
+
+void on_publish(struct mosquitto *mosq, void *obj, int rc)
+{
+    printf("Transmit : %d mid : %d\n", num_transmission++, rc);
+}
+
+void on_log(struct mosquitto *mosq, void *obj, int level, const char *str)
+{
+    printf("[LOG] %s\n", str);
 }
 
 int main(int argc, char **argv)
@@ -58,9 +69,8 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    mosquitto_max_inflight_messages_set(mosq, 0);
-    mosquitto_message_retry_set(mosq, 0);
-    mosquitto_threaded_set(mosq, false);
+    mosquitto_publish_callback_set(mosq, on_publish);
+    mosquitto_log_callback_set(mosq, on_log);
 
     switch( mosquitto_connect(mosq, host, port, keepalive) )
     {
@@ -83,9 +93,14 @@ int main(int argc, char **argv)
         threads_id[i] = i;
         pthread_create(&(threads[i]), NULL, &publisher_thread, &(threads_id[i]));
     }
- 
+
     for(i=0; i < NUM_THREADS; i++)
+    {
         pthread_join(threads[i], NULL);
+    }
+
+    while( num_transmission != NUM_THREADS );
+    sleep(5);
 
     /* Call to free resources associated with the library */
     mosquitto_destroy(mosq);
