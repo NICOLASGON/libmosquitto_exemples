@@ -3,23 +3,36 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include <mosquitto.h>
+
+struct mosquitto *mosq = NULL;
+
+/* Signals handlers */
+void signal_end(int signum)
+{
+    printf("Receive a end signal\n");
+    mosquitto_disconnect(mosq);
+}
 
 /* Mosquitto callbacks functions */
 void on_connect(struct mosquitto *mosq, void *obj, int rc)
 {
     printf("on_connect\n");
+    printf("\tstatus code  | %d\n", rc);
 }
 
 void on_disconnect(struct mosquitto *mosq, void *obj, int rc)
 {
     printf("on_disconnect\n");
+    printf("\tstatus code  | %d\n", rc);
 }
 
 void on_publish(struct mosquitto *mosq, void *obj, int rc)
 {
     printf("on_publish\n");
+    printf("\tstatus code  | %d\n", rc);
 }
 
 void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message)
@@ -36,11 +49,17 @@ void on_message(struct mosquitto *mosq, void *obj, const struct mosquitto_messag
 void on_subscribe(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos)
 {
     printf("on_subscribe\n");
+    printf("\tid          | %d\n", mid);
+    printf("\tqos_count   | %d\n", qos_count);
+    int i = 0;
+    for( i = 0; i < qos_count; i++)
+        printf("\tqos sub %d   | %d\n", granted_qos[i]);
 }
 
 void on_unsubscribe(struct mosquitto *mosq, void *obj, int mid)
 {
     printf("on_unsubscribe\n");
+    printf("\tid          | %d\n", mid);
 }
 
 void on_log(struct mosquitto *mosq, void *obj, int level, const char *str)
@@ -52,7 +71,6 @@ void on_log(struct mosquitto *mosq, void *obj, int level, const char *str)
 int main(int argc, char **argv)
 {
     int major = 0, minor = 0, revision = 0;
-    struct mosquitto *mosq = NULL;
     bool clean_session = true;
     char *host = "localhost";
     int port = 1883;
@@ -60,6 +78,10 @@ int main(int argc, char **argv)
     char mqtt_message[200];
     char topic[200];
     int retval = 0;
+
+    /* Signals handlers */
+    signal(SIGINT, signal_end);
+    signal(SIGTERM, signal_end);
 
     /* Show library version */
     mosquitto_lib_version(&major, &minor, &revision);

@@ -3,10 +3,28 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
+#include <stdbool.h>
 
 #include <mosquitto.h>
 
+#define NUM_THREADS 10
+
 struct mosquitto *mosq = NULL;
+
+void *publisher_thread(void *parameters)
+{
+    char mqtt_message[200];
+    char topic[200];
+    int error = 0;
+
+    sprintf(topic, "/gateway/%d", *(int *)parameters);
+    sprintf(mqtt_message, "Hello world from %d", *(int *)parameters);
+
+    printf("%s %s\n", topic, mqtt_message);
+    if( mosquitto_publish(mosq, NULL, topic, strlen(mqtt_message), mqtt_message, 1, false) != MOSQ_ERR_SUCCESS )
+        printf("ERROR\n");
+}
 
 int main(int argc, char **argv)
 {
@@ -15,8 +33,7 @@ int main(int argc, char **argv)
     char *host = "localhost";
     int port = 1883;
     int keepalive = 60;
-    char mqtt_message[200];
-    char topic[200];
+    pthread_t threads[NUM_THREADS];
 
     /* Show library version */
     mosquitto_lib_version(&major, &minor, &revision);
@@ -41,6 +58,10 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    mosquitto_max_inflight_messages_set(mosq, 0);
+    mosquitto_message_retry_set(mosq, 0);
+    mosquitto_threaded_set(mosq, false);
+
     switch( mosquitto_connect(mosq, host, port, keepalive) )
     {
         case MOSQ_ERR_INVAL:
@@ -48,28 +69,23 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
             break;
         case MOSQ_ERR_ERRNO:
-            fprintf(stderr, "Error : %s\n", strerror(errno));
+            fprintf(stderr, "Error : %s\n", mosquitto_strerror(errno));
             return EXIT_FAILURE;
             break;
     }
-
+    
     printf("Mosquitto client started ...\n");
 
-    sprintf(topic, "/gateway/1");
-    sprintf(mqtt_message, "Hello world!");
-    switch( mosquitto_publish(mosq, NULL, topic, strlen(mqtt_message), mqtt_message, 0, false) )
+    int i = 0;
+    int threads_id[NUM_THREADS];
+    for(i=0; i < NUM_THREADS; i++)
     {
-        case MOSQ_ERR_SUCCESS:
-            printf("Publish success\n");
-            break;
-        case MOSQ_ERR_INVAL:
-        case MOSQ_ERR_NOMEM:
-        case MOSQ_ERR_NO_CONN:
-        case MOSQ_ERR_PROTOCOL:
-        case MOSQ_ERR_PAYLOAD_SIZE:
-            fprintf(stderr, "Error : %s\n", mosquitto_strerror(errno));
-            break;
+        threads_id[i] = i;
+        pthread_create(&(threads[i]), NULL, &publisher_thread, &(threads_id[i]));
     }
+ 
+    for(i=0; i < NUM_THREADS; i++)
+        pthread_join(threads[i], NULL);
 
     /* Call to free resources associated with the library */
     mosquitto_destroy(mosq);
