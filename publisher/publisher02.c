@@ -19,7 +19,7 @@ void *publisher_thread(void *parameters)
     char topic[200];
     int error = 0;
 
-    sprintf(topic, "/gateway/%d", *(int *)parameters);
+    sprintf(topic, "gateway/%d", *(int *)parameters);
     sprintf(mqtt_message, "Hello world from %d", *(int *)parameters);
 
     printf("%s %s\n", topic, mqtt_message);
@@ -30,6 +30,9 @@ void *publisher_thread(void *parameters)
 void on_publish(struct mosquitto *mosq, void *obj, int rc)
 {
     printf("Transmit : %d mid : %d\n", num_transmission++, rc);
+
+    if(num_transmission == NUM_THREADS)
+        mosquitto_disconnect(mosq);
 }
 
 void on_log(struct mosquitto *mosq, void *obj, int level, const char *str)
@@ -52,6 +55,7 @@ int main(int argc, char **argv)
 
     /* Init mosquitto library */
     mosquitto_lib_init();
+    mosquitto_threaded_set(mosq, true);
 
     /* Create a new mosquitto client instance */
     mosq = mosquitto_new(NULL, clean_session, NULL);
@@ -94,14 +98,8 @@ int main(int argc, char **argv)
         pthread_create(&(threads[i]), NULL, &publisher_thread, &(threads_id[i]));
     }
 
-    for(i=0; i < NUM_THREADS; i++)
-    {
-        pthread_join(threads[i], NULL);
-    }
-
-    while( num_transmission != NUM_THREADS );
-    sleep(5);
-
+    mosquitto_loop_forever(mosq, -1, 1);
+    
     /* Call to free resources associated with the library */
     mosquitto_destroy(mosq);
     mosquitto_lib_cleanup();
